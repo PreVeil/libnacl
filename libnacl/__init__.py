@@ -94,6 +94,7 @@ crypto_box_NONCEBYTES = nacl.crypto_box_noncebytes()
 crypto_box_ZEROBYTES = nacl.crypto_box_zerobytes()
 crypto_box_BOXZEROBYTES = nacl.crypto_box_boxzerobytes()
 crypto_box_BEFORENMBYTES = nacl.crypto_box_beforenmbytes()
+crypto_box_SEALBYTES = nacl.crypto_box_sealbytes()
 crypto_scalarmult_BYTES = nacl.crypto_scalarmult_bytes()
 crypto_scalarmult_SCALARBYTES = nacl.crypto_scalarmult_scalarbytes()
 crypto_sign_BYTES = nacl.crypto_sign_bytes()
@@ -238,6 +239,37 @@ def crypto_box_open_afternm(ctxt, nonce, k):
     if ret:
         raise ValueError('unable to decrypt message')
     return msg.raw[crypto_box_ZEROBYTES:]
+
+def crypto_box_seal(message, public_key):
+    if len(public_key) != crypto_box_PUBLICKEYBYTES:
+        raise ValueError("invalid public key")
+
+    mlen = len(message)
+    ciphertext = ctypes.create_string_buffer(crypto_box_SEALBYTES + mlen)
+    status = nacl.crypto_box_seal(ciphertext, message,
+        ctypes.c_ulonglong(mlen), public_key)
+    if status != 0:
+        raise CryptError("crypto_box_seal failed")
+
+    return ciphertext.raw
+
+def crypto_box_seal_open(ciphertext, public_key, private_key):
+    if len(public_key) != crypto_box_PUBLICKEYBYTES:
+        raise ValueError("invalid public key")
+    if len(private_key) != crypto_box_SECRETKEYBYTES:
+        raise ValueError("invalid private key")
+    if len(ciphertext) < crypto_box_SEALBYTES:
+        raise ValueError("invalid ciphertext, too short")
+
+    clen = len(ciphertext)
+    mlen = clen - crypto_box_SEALBYTES
+    plaintext = ctypes.create_string_buffer(mlen)
+    status = nacl.crypto_box_seal_open(plaintext, ciphertext,
+        ctypes.c_ulonglong(clen), public_key, private_key)
+    if status != 0:
+        raise CryptError("crypto_box_seal_open failed")
+
+    return plaintext.raw
 
 # Signing functions
 

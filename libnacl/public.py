@@ -17,6 +17,9 @@ class PublicKey(libnacl.base.BaseKey):
     def __init__(self, pk):
         self.pk = pk
 
+    def seal(self, message):
+        return libnacl.crypto_box_seal(message, self.pk)
+
 
 class SecretKey(libnacl.base.BaseKey):
     '''
@@ -34,6 +37,11 @@ class SecretKey(libnacl.base.BaseKey):
         else:
             raise ValueError('Passed in invalid secret key')
 
+    def seal(self, *args, **kargs):
+        return PublicKey(self.pk).seal(*args, **kargs)
+
+    def seal_open(self, ciphertext):
+        return libnacl.crypto_box_seal_open(ciphertext, self.pk, self.sk)
 
 class Box(object):
     '''
