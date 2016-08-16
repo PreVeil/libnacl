@@ -32,6 +32,9 @@ class PublicKey(libnacl.base.BaseKey):
     def __hash__(self):
         return hash(self.pk)
 
+    def seal(self, message):
+        return libnacl.crypto_box_seal(message, self.pk)
+
 
 class SecretKey(libnacl.base.BaseKey):
     '''
@@ -61,6 +64,11 @@ class SecretKey(libnacl.base.BaseKey):
     def __hash__(self):
         return hash((self.sk, self.pk))
 
+    def seal(self, *args, **kargs):
+        return PublicKey(self.pk).seal(*args, **kargs)
+
+    def seal_open(self, ciphertext):
+        return libnacl.crypto_box_seal_open(ciphertext, self.pk, self.sk)
 
 class Box(object):
     '''

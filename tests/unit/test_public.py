@@ -39,3 +39,18 @@ class TestPublic(unittest.TestCase):
         bclear = alice_box.decrypt(bob_ctxt)
         self.assertEqual(msg, bclear)
 
+    def test_seal(self):
+        '''
+        '''
+        plaintext = b'The quick brown fox jumps over the lazy dog.'
+        bob = libnacl.public.SecretKey()
+        privalice = libnacl.public.SecretKey()
+        pubalice = libnacl.public.PublicKey(privalice.pk)
+
+        sealed = pubalice.seal(plaintext)
+        unsealed = privalice.seal_open(sealed)
+        self.assertEqual(plaintext, unsealed)
+
+        sealed = privalice.seal(plaintext)
+        unsealed = privalice.seal_open(sealed)
+        self.assertEqual(plaintext, unsealed)

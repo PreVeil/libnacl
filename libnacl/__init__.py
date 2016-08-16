@@ -10,12 +10,24 @@ import os
 
 __SONAMES = (23, 18, 17, 13, 10, 5, 4)
 
+def lib_ext():
+    if sys.platform == "win32":
+        return ".dll"
+    if sys.platform == "darwin":
+        return ".dylib"
 
 def _get_nacl():
     '''
     Locate the nacl c libs to use
     '''
-    # Import libsodium
+    # attempt to import local dll
+    if not sys.platform.startswith("linux"):
+        name = 'libsodium' + lib_ext()
+        try:
+            return ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(os.path.abspath(__file__)), name))
+        except OSError as e: # fall back to default
+            print e
+
     if sys.platform.startswith('win'):
         try:
             return ctypes.cdll.LoadLibrary('libsodium')
@@ -93,101 +105,52 @@ class CryptError(Exception):
     Base Exception for cryptographic errors
     """
 
-if not DOC_RUN:
-    sodium_init = nacl.sodium_init
-    sodium_init.res_type = ctypes.c_int
-    if sodium_init() < 0:
-        raise RuntimeError('sodium_init() call failed!')
+sodium_init = nacl.sodium_init
+sodium_init.res_type = ctypes.c_int
+if sodium_init() < 0:
+    raise RuntimeError('sodium_init() call failed!')
 
-    # Define constants
-    try:
-        crypto_box_SEALBYTES = nacl.crypto_box_sealbytes()
-        HAS_SEAL = True
-    except AttributeError:
-        HAS_SEAL = False
-    try:
-        crypto_aead_aes256gcm_KEYBYTES = nacl.crypto_aead_aes256gcm_keybytes()
-        crypto_aead_aes256gcm_NPUBBYTES = nacl.crypto_aead_aes256gcm_npubbytes()
-        crypto_aead_aes256gcm_ABYTES = nacl.crypto_aead_aes256gcm_abytes()
-        HAS_AEAD_AES256GCM = bool(nacl.crypto_aead_aes256gcm_is_available())
-        crypto_aead_chacha20poly1305_ietf_KEYBYTES = nacl.crypto_aead_chacha20poly1305_ietf_keybytes()
-        crypto_aead_chacha20poly1305_ietf_NPUBBYTES = nacl.crypto_aead_chacha20poly1305_ietf_npubbytes()
-        crypto_aead_chacha20poly1305_ietf_ABYTES = nacl.crypto_aead_chacha20poly1305_ietf_abytes()
-        HAS_AEAD_CHACHA20POLY1305_IETF = True
-        HAS_AEAD = True
-    except AttributeError:
-        HAS_AEAD_AES256GCM = False
-        HAS_AEAD_CHACHA20POLY1305_IETF = False
-        HAS_AEAD = False
+# Define constants
+crypto_box_SECRETKEYBYTES = nacl.crypto_box_secretkeybytes()
+crypto_box_PUBLICKEYBYTES = nacl.crypto_box_publickeybytes()
+crypto_box_NONCEBYTES = nacl.crypto_box_noncebytes()
+crypto_box_ZEROBYTES = nacl.crypto_box_zerobytes()
+crypto_box_BOXZEROBYTES = nacl.crypto_box_boxzerobytes()
+crypto_box_BEFORENMBYTES = nacl.crypto_box_beforenmbytes()
+crypto_box_SEALBYTES = nacl.crypto_box_sealbytes()
+crypto_scalarmult_BYTES = nacl.crypto_scalarmult_bytes()
+crypto_scalarmult_SCALARBYTES = nacl.crypto_scalarmult_scalarbytes()
+crypto_sign_BYTES = nacl.crypto_sign_bytes()
+crypto_sign_SEEDBYTES = nacl.crypto_sign_secretkeybytes() // 2
+crypto_sign_PUBLICKEYBYTES = nacl.crypto_sign_publickeybytes()
+crypto_sign_SECRETKEYBYTES = nacl.crypto_sign_secretkeybytes()
+crypto_box_MACBYTES = crypto_box_ZEROBYTES - crypto_box_BOXZEROBYTES
+crypto_secretbox_KEYBYTES = nacl.crypto_secretbox_keybytes()
+crypto_secretbox_NONCEBYTES = nacl.crypto_secretbox_noncebytes()
+crypto_secretbox_ZEROBYTES = nacl.crypto_secretbox_zerobytes()
+crypto_secretbox_BOXZEROBYTES = nacl.crypto_secretbox_boxzerobytes()
+crypto_secretbox_MACBYTES = crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES
+crypto_stream_KEYBYTES = nacl.crypto_stream_keybytes()
+crypto_stream_NONCEBYTES = nacl.crypto_stream_noncebytes()
+crypto_auth_BYTES = nacl.crypto_auth_bytes()
+crypto_auth_KEYBYTES = nacl.crypto_auth_keybytes()
+crypto_onetimeauth_BYTES = nacl.crypto_onetimeauth_bytes()
+crypto_onetimeauth_KEYBYTES = nacl.crypto_onetimeauth_keybytes()
+crypto_generichash_BYTES = nacl.crypto_generichash_bytes()
+crypto_generichash_BYTES_MIN = nacl.crypto_generichash_bytes_min()
+crypto_generichash_BYTES_MAX = nacl.crypto_generichash_bytes_max()
+crypto_generichash_KEYBYTES = nacl.crypto_generichash_keybytes()
+crypto_generichash_KEYBYTES_MIN = nacl.crypto_generichash_keybytes_min()
+crypto_generichash_KEYBYTES_MAX = nacl.crypto_generichash_keybytes_max()
+crypto_scalarmult_curve25519_BYTES = nacl.crypto_scalarmult_curve25519_bytes()
+crypto_hash_BYTES = nacl.crypto_hash_sha512_bytes()
+crypto_hash_sha256_BYTES = nacl.crypto_hash_sha256_bytes()
+crypto_hash_sha512_BYTES = nacl.crypto_hash_sha512_bytes()
+crypto_verify_16_BYTES = nacl.crypto_verify_16_bytes()
+crypto_verify_32_BYTES = nacl.crypto_verify_32_bytes()
+crypto_verify_64_BYTES = nacl.crypto_verify_64_bytes()
+# pylint: enable=C0103
 
-    crypto_box_SECRETKEYBYTES = nacl.crypto_box_secretkeybytes()
-    crypto_box_SEEDBYTES = nacl.crypto_box_seedbytes()
-    crypto_box_PUBLICKEYBYTES = nacl.crypto_box_publickeybytes()
-    crypto_box_NONCEBYTES = nacl.crypto_box_noncebytes()
-    crypto_box_ZEROBYTES = nacl.crypto_box_zerobytes()
-    crypto_box_BOXZEROBYTES = nacl.crypto_box_boxzerobytes()
-    crypto_box_BEFORENMBYTES = nacl.crypto_box_beforenmbytes()
-    crypto_scalarmult_BYTES = nacl.crypto_scalarmult_bytes()
-    crypto_scalarmult_SCALARBYTES = nacl.crypto_scalarmult_scalarbytes()
-    crypto_sign_BYTES = nacl.crypto_sign_bytes()
-    crypto_sign_SEEDBYTES = nacl.crypto_sign_secretkeybytes() // 2
-    crypto_sign_PUBLICKEYBYTES = nacl.crypto_sign_publickeybytes()
-    crypto_sign_SECRETKEYBYTES = nacl.crypto_sign_secretkeybytes()
-    crypto_sign_ed25519_PUBLICKEYBYTES = nacl.crypto_sign_ed25519_publickeybytes()
-    crypto_sign_ed25519_SECRETKEYBYTES = nacl.crypto_sign_ed25519_secretkeybytes()
-    crypto_box_MACBYTES = crypto_box_ZEROBYTES - crypto_box_BOXZEROBYTES
-    crypto_secretbox_KEYBYTES = nacl.crypto_secretbox_keybytes()
-    crypto_secretbox_NONCEBYTES = nacl.crypto_secretbox_noncebytes()
-    crypto_secretbox_ZEROBYTES = nacl.crypto_secretbox_zerobytes()
-    crypto_secretbox_BOXZEROBYTES = nacl.crypto_secretbox_boxzerobytes()
-    crypto_secretbox_MACBYTES = crypto_secretbox_ZEROBYTES - crypto_secretbox_BOXZEROBYTES
-    crypto_stream_KEYBYTES = nacl.crypto_stream_keybytes()
-    crypto_stream_NONCEBYTES = nacl.crypto_stream_noncebytes()
-    crypto_auth_BYTES = nacl.crypto_auth_bytes()
-    crypto_auth_KEYBYTES = nacl.crypto_auth_keybytes()
-    crypto_onetimeauth_BYTES = nacl.crypto_onetimeauth_bytes()
-    crypto_onetimeauth_KEYBYTES = nacl.crypto_onetimeauth_keybytes()
-    crypto_generichash_BYTES = nacl.crypto_generichash_bytes()
-    crypto_generichash_BYTES_MIN = nacl.crypto_generichash_bytes_min()
-    crypto_generichash_BYTES_MAX = nacl.crypto_generichash_bytes_max()
-    crypto_generichash_KEYBYTES = nacl.crypto_generichash_keybytes()
-    crypto_generichash_KEYBYTES_MIN = nacl.crypto_generichash_keybytes_min()
-    crypto_generichash_KEYBYTES_MAX = nacl.crypto_generichash_keybytes_max()
-    crypto_scalarmult_curve25519_BYTES = nacl.crypto_scalarmult_curve25519_bytes()
-    crypto_hash_BYTES = nacl.crypto_hash_sha512_bytes()
-    crypto_hash_sha256_BYTES = nacl.crypto_hash_sha256_bytes()
-    crypto_hash_sha512_BYTES = nacl.crypto_hash_sha512_bytes()
-    crypto_verify_16_BYTES = nacl.crypto_verify_16_bytes()
-    crypto_verify_32_BYTES = nacl.crypto_verify_32_bytes()
-    crypto_verify_64_BYTES = nacl.crypto_verify_64_bytes()
-
-    try:
-        randombytes_SEEDBYTES = nacl.randombytes_seedbytes()
-        HAS_RAND_SEED = True
-    except AttributeError:
-        HAS_RAND_SEED = False
-
-    try:
-        crypto_kdf_PRIMITIVE = nacl.crypto_kdf_primitive()
-        crypto_kdf_BYTES_MIN = nacl.crypto_kdf_bytes_min()
-        crypto_kdf_BYTES_MAX = nacl.crypto_kdf_bytes_max()
-        crypto_kdf_CONTEXTBYTES = nacl.crypto_kdf_contextbytes()
-        crypto_kdf_KEYBYTES = nacl.crypto_kdf_keybytes()
-        HAS_CRYPT_KDF = True
-    except AttributeError:
-        HAS_CRYPT_KDF = False
-
-    try:
-        crypto_kx_PUBLICKEYBYTES = nacl.crypto_kx_publickeybytes()
-        crypto_kx_SECRETKEYBYTES = nacl.crypto_kx_secretkeybytes()
-        crypto_kx_SEEDBYTES = nacl.crypto_kx_seedbytes()
-        crypto_kx_SESSIONKEYBYTES = nacl.crypto_kx_sessionkeybytes()
-        crypto_kx_PRIMITIVE = nacl.crypto_kx_primitive()
-        HAS_CRYPT_KX = True
-    except AttributeError:
-        HAS_CRYPT_KX = False
-
-    # pylint: enable=C0103
 
 # Pubkey defs
 
@@ -206,7 +169,7 @@ def crypto_box_keypair():
 
 def crypto_box_seed_keypair(seed):
     '''
-    Generate and return a keypair from a key seed 
+    Generate and return a keypair from a key seed
     '''
     if len(seed) != crypto_box_SEEDBYTES:
         raise ValueError('Invalid key seed')
@@ -370,83 +333,36 @@ def crypto_box_open_afternm(ctxt, nonce, k):
         raise CryptError('unable to decrypt message')
     return msg.raw[crypto_box_ZEROBYTES:]
 
+def crypto_box_seal(message, public_key):
+    if len(public_key) != crypto_box_PUBLICKEYBYTES:
+        raise ValueError("invalid public key")
 
-def crypto_box_easy_afternm(msg, nonce, k):
-    '''
-    Using a precalculated shared key, encrypt the given message. A nonce
-    must also be passed in, never reuse the nonce
+    mlen = len(message)
+    ciphertext = ctypes.create_string_buffer(crypto_box_SEALBYTES + mlen)
+    status = nacl.crypto_box_seal(ciphertext, message,
+        ctypes.c_ulonglong(mlen), public_key)
+    if status != 0:
+        raise CryptError("crypto_box_seal failed")
 
-    enc_msg = nacl.crypto_box_easy_afternm('secret message', <unique nonce>, <shared key string>)
-    '''
-    if len(k) != crypto_box_BEFORENMBYTES:
-        raise ValueError('Invalid shared key')
-    if len(nonce) != crypto_box_NONCEBYTES:
-        raise ValueError('Invalid nonce')
-    ctxt = ctypes.create_string_buffer(len(msg) + crypto_box_MACBYTES)
-    ret = nacl.crypto_box_easy_afternm(ctxt, msg, ctypes.c_ulonglong(len(msg)), nonce, k)
-    if ret:
-        raise CryptError('Unable to encrypt messsage')
-    return ctxt.raw
+    return ciphertext.raw
 
+def crypto_box_seal_open(ciphertext, public_key, private_key):
+    if len(public_key) != crypto_box_PUBLICKEYBYTES:
+        raise ValueError("invalid public key")
+    if len(private_key) != crypto_box_SECRETKEYBYTES:
+        raise ValueError("invalid private key")
+    if len(ciphertext) < crypto_box_SEALBYTES:
+        raise ValueError("invalid ciphertext, too short")
 
-def crypto_box_open_easy_afternm(ctxt, nonce, k):
-    '''
-    Decrypts a ciphertext ctxt given k
-    '''
-    if len(k) != crypto_box_BEFORENMBYTES:
-        raise ValueError('Invalid shared key')
-    if len(nonce) != crypto_box_NONCEBYTES:
-        raise ValueError('Invalid nonce')
-    msg = ctypes.create_string_buffer(len(ctxt) - crypto_box_MACBYTES)
-    ret = nacl.crypto_box_open_easy_afternm(
-            msg,
-            ctxt,
-            ctypes.c_ulonglong(len(ctxt)),
-            nonce,
-            k)
-    if ret:
-        raise CryptError('unable to decrypt message')
-    return msg.raw
+    clen = len(ciphertext)
+    mlen = clen - crypto_box_SEALBYTES
+    plaintext = ctypes.create_string_buffer(mlen)
+    status = nacl.crypto_box_seal_open(plaintext, ciphertext,
+        ctypes.c_ulonglong(clen), public_key, private_key)
+    if status != 0:
+        raise CryptError("crypto_box_seal_open failed")
 
-
-def crypto_box_seal(msg, pk):
-    '''
-    Using a public key to encrypt the given message. The identity of the sender cannot be verified.
-
-    enc_msg = nacl.crypto_box_seal('secret message', <public key string>)
-    '''
-    if not HAS_SEAL:
-        raise ValueError('Underlying Sodium library does not support sealed boxes')
-    if len(pk) != crypto_box_PUBLICKEYBYTES:
-        raise ValueError('Invalid public key')
-    if not isinstance(msg, bytes):
-        raise TypeError('Message must be bytes')
-
-    c = ctypes.create_string_buffer(len(msg) + crypto_box_SEALBYTES)
-    ret = nacl.crypto_box_seal(c, msg, ctypes.c_ulonglong(len(msg)), pk)
-    if ret:
-        raise CryptError('Unable to encrypt message')
-    return c.raw
-
-
-def crypto_box_seal_open(ctxt, pk, sk):
-    '''
-    Decrypts a message given the receiver's public and private key.
-    '''
-    if not HAS_SEAL:
-        raise ValueError('Underlying Sodium library does not support sealed boxes')
-    if len(pk) != crypto_box_PUBLICKEYBYTES:
-        raise ValueError('Invalid public key')
-    if len(sk) != crypto_box_SECRETKEYBYTES:
-        raise ValueError('Invalid secret key')
-    if not isinstance(ctxt, bytes):
-        raise TypeError('Message must be bytes')
-
-    c = ctypes.create_string_buffer(len(ctxt) - crypto_box_SEALBYTES)
-    ret = nacl.crypto_box_seal_open(c, ctxt, ctypes.c_ulonglong(len(ctxt)), pk, sk)
-    if ret:
-        raise CryptError('Unable to decrypt message')
-    return c.raw
+    return plaintext.raw
 
 # Signing functions
 
@@ -491,7 +407,7 @@ def crypto_sign_ed25519_sk_to_pk(sk):
 
 def crypto_sign_ed25519_sk_to_seed(sk):
     '''
-    Extract the seed from the secret key 
+    Extract the seed from the secret key
     '''
     if len(sk) != crypto_sign_ed25519_SECRETKEYBYTES:
         raise ValueError('Invalid secret key')
@@ -666,7 +582,7 @@ def crypto_secretbox_easy(cmessage, nonce, key):
     if len(nonce) != crypto_secretbox_NONCEBYTES:
         raise ValueError('Invalid nonce')
 
-    
+
     ctxt = ctypes.create_string_buffer(crypto_secretbox_MACBYTES + len(cmessage))
     ret = nacl.crypto_secretbox_easy(ctxt, cmessage, ctypes.c_ulonglong(len(cmessage)), nonce, key)
     if ret:
@@ -685,7 +601,7 @@ def crypto_secretbox_open_easy(ctxt, nonce, key):
     ret = nacl.crypto_secretbox_open_easy(msg, ctxt, ctypes.c_ulonglong(len(ctxt)), nonce, key)
     if ret:
         raise ValueError('Failed to decrypt message')
-    return msg.raw[0:len(ctxt) - crypto_secretbox_MACBYTES]    
+    return msg.raw[0:len(ctxt) - crypto_secretbox_MACBYTES]
 
 # Authenticated Symmetric Encryption with Additional Data
 
@@ -1114,8 +1030,8 @@ def randombytes_buf(size):
 
 def randombytes_buf_deterministic(size, seed):
     '''
-    Returns a string of random byles of the given size for a given seed. 
-    For a given seed, this function will always output the same sequence. 
+    Returns a string of random byles of the given size for a given seed.
+    For a given seed, this function will always output the same sequence.
     Size can be up to 2^70 (256 GB).
     '''
 
@@ -1127,7 +1043,7 @@ def randombytes_buf_deterministic(size, seed):
     size = int(size)
     buf = ctypes.create_string_buffer(size)
     nacl.randombytes_buf_deterministic(buf, size, seed)
-    return buf.raw 
+    return buf.raw
 
 def randombytes_close():
     '''
@@ -1160,7 +1076,7 @@ def randombytes_uniform(upper_bound):
     '''
     return nacl.randombytes_uniform(upper_bound)
 
-# Key derivation API 
+# Key derivation API
 
 def crypto_kdf_keygen():
     '''
@@ -1171,11 +1087,11 @@ def crypto_kdf_keygen():
     size = crypto_kdf_KEYBYTES
     buf = ctypes.create_string_buffer(size)
     nacl.crypto_kdf_keygen(buf)
-    return buf.raw 
+    return buf.raw
 
 def crypto_kdf_derive_from_key(subkey_size, subkey_id, context, master_key):
     '''
-    Returns a subkey generated from a master key for a given subkey_id. 
+    Returns a subkey generated from a master key for a given subkey_id.
     For a given subkey_id, the subkey will always be the same string.
     '''
     size = int(subkey_size)
@@ -1212,7 +1128,7 @@ def crypto_kx_seed_keypair(seed):
 
 def crypto_kx_client_session_keys(client_pk, client_sk, server_pk):
     '''
-    Computes a pair of shared keys (rx and tx) using the client's public key client_pk, 
+    Computes a pair of shared keys (rx and tx) using the client's public key client_pk,
     the client's secret key client_sk and the server's public key server_pk.
     Status returns 0 on success, or -1 if the server's public key is not acceptable.
     '''
@@ -1226,7 +1142,7 @@ def crypto_kx_client_session_keys(client_pk, client_sk, server_pk):
 
 def crypto_kx_server_session_keys(server_pk, server_sk, client_pk):
     '''
-    Computes a pair of shared keys (rx and tx) using the server's public key server_pk, 
+    Computes a pair of shared keys (rx and tx) using the server's public key server_pk,
     the server's secret key server_sk and the client's public key client_pk.
     Status returns 0 on success, or -1 if the client's public key is not acceptable.
     '''
@@ -1291,5 +1207,3 @@ def crypto_sign_ed25519_sk_to_curve25519(ed25519_sk):
     if ret:
         raise CryptError('Failed to generate Curve25519 secret key')
     return curve25519_sk.raw
-
-
