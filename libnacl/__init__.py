@@ -28,15 +28,6 @@ def _get_nacl():
         except OSError as e: # fall back to default
             print e
 
-    # If LIBSODIUM_PATH is specified, the dynamic library must exist.  This
-    # behavior is simple and easy to test.
-    env_libsodium_path = os.getenv('LIBSODIUM_PATH')
-    if env_libsodium_path != None:
-        try:
-            return ctypes.cdll.LoadLibrary(env_libsodium_path)
-        except OSError:
-            raise OSError("Could not find dynamic lib at LIBSODIUM_PATH=%s" % env_libsodium_path)
-
     if sys.platform.startswith('win'):
         try:
             return ctypes.cdll.LoadLibrary('libsodium')

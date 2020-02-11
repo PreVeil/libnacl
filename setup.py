@@ -33,4 +33,4 @@ setup(
         "Topic :: Security :: Cryptography",
     ],
     packages=["libnacl"],
-)
+    package_data={'libnacl': ['libsodium*']})
