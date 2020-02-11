@@ -12,21 +12,24 @@ import os
 
 __SONAMES = (18, 17, 13, 10, 5, 4)
 
+def lib_ext():
+    if sys.platform == "win32":
+        return ".dll"
+    if sys.platform == "darwin":
+        return ".dylib"
+
 
 def _get_nacl():
     '''
     Locate the nacl c libs to use
     '''
-    # Import libsodium
-
-    # If LIBSODIUM_PATH is specified, the dynamic library must exist.  This
-    # behavior is simple and easy to test.
-    env_libsodium_path = os.getenv('LIBSODIUM_PATH')
-    if env_libsodium_path != None:
+    # attempt to import local dll
+    if not sys.platform.startswith("linux"):
+        name = 'libsodium' + lib_ext()
         try:
-            return ctypes.cdll.LoadLibrary(env_libsodium_path)
-        except OSError:
-            raise OSError("Could not find dynamic lib at LIBSODIUM_PATH=%s" % env_libsodium_path)
+            return ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(os.path.abspath(__file__)), name))
+        except OSError as e: # fall back to default
+            print e
 
     if sys.platform.startswith('win'):
         try:
