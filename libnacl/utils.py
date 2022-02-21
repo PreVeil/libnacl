@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import struct
+import sys
 import time
 
 # Import nacl libs
@@ -31,7 +32,10 @@ def load_key(path_or_file, serial='json'):
             key_data = msgpack.load(stream)
         elif serial == 'json':
             import json
-            key_data = json.loads(stream.read(), encoding='UTF-8')
+            if sys.version_info[0] >= 3:
+                key_data = json.loads(stream.read())
+            else:
+                key_data = json.loads(stream.read(), encoding='UTF-8')
     finally:
         if stream != path_or_file:
             stream.close()
@@ -64,6 +68,21 @@ def salsa_key():
     return libnacl.randombytes(libnacl.crypto_secretbox_KEYBYTES)
 
 
+def aead_key():
+    '''
+    Generates an AEAD key (both implementations use the same size)
+    '''
+    return libnacl.randombytes(libnacl.crypto_aead_aes256gcm_KEYBYTES)
+
+
+def rand_aead_nonce():
+    '''
+    Generates and returns a random bytestring of the size defined in libsodium
+    as crypto_aead_aes256gcm_NPUBBYTES and crypto_aead_chacha20poly1305_ietf_NPUBBYTES
+    '''
+    return libnacl.randombytes(libnacl.crypto_aead_aes256gcm_NPUBBYTES)
+
+
 def rand_nonce():
     '''
     Generates and returns a random bytestring of the size defined in libsodium
@@ -80,4 +99,3 @@ def time_nonce():
     '''
     nonce = rand_nonce()
     return (struct.pack('=d', time.time()) + nonce)[:len(nonce)]
-

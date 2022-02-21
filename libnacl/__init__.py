@@ -3,21 +3,18 @@
 Wrap libsodium routines
 '''
 # pylint: disable=C0103
-# Import libnacl libs
-from libnacl.version import __version__
 # Import python libs
 import ctypes
 import sys
 import os
 
-__SONAMES = (18, 17, 13, 10, 5, 4)
+__SONAMES = (23, 18, 17, 13, 10, 5, 4)
 
 def lib_ext():
     if sys.platform == "win32":
         return ".dll"
     if sys.platform == "darwin":
         return ".dylib"
-
 
 def _get_nacl():
     '''
@@ -82,12 +79,24 @@ def _get_nacl():
                 )
             except OSError:
                 pass
+        try:
+            # fall back to shipped libsodium, trust os version first
+            libpath = os.path.join(os.path.dirname(__file__), 'libsodium.so')
+            return ctypes.cdll.LoadLibrary(libpath)
+        except OSError:
+            pass
         msg = 'Could not locate nacl lib, searched for libsodium.so, '
         for soname_ver in __SONAMES:
             msg += 'libsodium.so.{0}, '.format(soname_ver)
         raise OSError(msg)
 
-nacl = _get_nacl()
+# Don't load libnacl if we are in sphinx
+if not 'sphinx' in sys.argv[0]:
+    nacl = _get_nacl()
+    DOC_RUN = False
+else:
+    nacl = None
+    DOC_RUN = True
 
 
 # Define exceptions
@@ -158,6 +167,33 @@ def crypto_box_keypair():
     return pk.raw, sk.raw
 
 
+def crypto_box_seed_keypair(seed):
+    '''
+    Generate and return a keypair from a key seed
+    '''
+    if len(seed) != crypto_box_SEEDBYTES:
+        raise ValueError('Invalid key seed')
+    pk = ctypes.create_string_buffer(crypto_box_PUBLICKEYBYTES)
+    sk = ctypes.create_string_buffer(crypto_box_SECRETKEYBYTES)
+    nacl.crypto_box_seed_keypair(pk, sk, seed)
+    return pk.raw, sk.raw
+
+
+def crypto_scalarmult_base(sk):
+    '''
+    Compute and return the scalar product of a standard group element and the given integer.
+
+    This can be used to derive a Curve25519 public key from a Curve25519 secret key,
+    such as for usage with crypto_box and crypto_box_seal.
+    '''
+    if len(sk) != crypto_box_SECRETKEYBYTES:
+        raise ValueError('Invalid secret key')
+    pk = ctypes.create_string_buffer(crypto_box_PUBLICKEYBYTES)
+    if nacl.crypto_scalarmult_base(pk, sk):
+        raise CryptError('Failed to compute scalar product')
+    return pk.raw
+
+
 def crypto_box(msg, nonce, pk, sk):
     '''
     Using a public key and a secret key encrypt the given message. A nonce
@@ -181,7 +217,7 @@ def crypto_box(msg, nonce, pk, sk):
 
 def crypto_box_open(ctxt, nonce, pk, sk):
     '''
-    Decrypts a message given the receivers private key, and senders public key
+    Decrypts a message given the receiver's private key, and sender's public key
     '''
     if len(pk) != crypto_box_PUBLICKEYBYTES:
         raise ValueError('Invalid public key')
@@ -195,6 +231,49 @@ def crypto_box_open(ctxt, nonce, pk, sk):
             msg,
             pad,
             ctypes.c_ulonglong(len(pad)),
+            nonce,
+            pk,
+            sk)
+    if ret:
+        raise CryptError('Unable to decrypt ciphertext')
+    return msg.raw[crypto_box_ZEROBYTES:]
+
+
+def crypto_box_easy(msg, nonce, pk, sk):
+    '''
+    Using a public key and a secret key encrypt the given message. A nonce
+    must also be passed in, never reuse the nonce
+
+    enc_msg = nacl.crypto_box_easy('secret message', <unique nonce>, <public key string>, <secret key string>)
+    '''
+    if len(pk) != crypto_box_PUBLICKEYBYTES:
+        raise ValueError('Invalid public key')
+    if len(sk) != crypto_box_SECRETKEYBYTES:
+        raise ValueError('Invalid secret key')
+    if len(nonce) != crypto_box_NONCEBYTES:
+        raise ValueError('Invalid nonce')
+    c = ctypes.create_string_buffer(len(msg) + crypto_box_MACBYTES)
+    ret = nacl.crypto_box(c, msg, ctypes.c_ulonglong(len(msg)), nonce, pk, sk)
+    if ret:
+        raise CryptError('Unable to encrypt message')
+    return c.raw
+
+
+def crypto_box_open_easy(ctxt, nonce, pk, sk):
+    '''
+    Decrypts a message given the receiver's private key, and sender's public key
+    '''
+    if len(pk) != crypto_box_PUBLICKEYBYTES:
+        raise ValueError('Invalid public key')
+    if len(sk) != crypto_box_SECRETKEYBYTES:
+        raise ValueError('Invalid secret key')
+    if len(nonce) != crypto_box_NONCEBYTES:
+        raise ValueError('Invalid nonce')
+    msg = ctypes.create_string_buffer(len(ctxt) - crypto_box_MACBYTES)
+    ret = nacl.crypto_box_open(
+            msg,
+            ctxt,
+            ctypes.c_ulonglong(len(ctxt)),
             nonce,
             pk,
             sk)
@@ -230,7 +309,7 @@ def crypto_box_afternm(msg, nonce, k):
     ctxt = ctypes.create_string_buffer(len(pad))
     ret = nacl.crypto_box_afternm(ctxt, pad, ctypes.c_ulonglong(len(pad)), nonce, k)
     if ret:
-        raise ValueError('Unable to encrypt messsage')
+        raise CryptError('Unable to encrypt messsage')
     return ctxt.raw[crypto_box_BOXZEROBYTES:]
 
 
@@ -251,7 +330,7 @@ def crypto_box_open_afternm(ctxt, nonce, k):
             nonce,
             k)
     if ret:
-        raise ValueError('unable to decrypt message')
+        raise CryptError('unable to decrypt message')
     return msg.raw[crypto_box_ZEROBYTES:]
 
 def crypto_box_seal(message, public_key):
@@ -300,10 +379,53 @@ def crypto_sign_keypair():
     return vk.raw, sk.raw
 
 
+def crypto_sign_ed25519_keypair():
+    '''
+    Generates a signing/verification Ed25519 key pair
+    '''
+    vk = ctypes.create_string_buffer(crypto_sign_ed25519_PUBLICKEYBYTES)
+    sk = ctypes.create_string_buffer(crypto_sign_ed25519_SECRETKEYBYTES)
+    ret = nacl.crypto_sign_ed25519_keypair(vk, sk)
+    if ret:
+        raise ValueError('Failed to generate keypair')
+    return vk.raw, sk.raw
+
+
+def crypto_sign_ed25519_sk_to_pk(sk):
+    '''
+    Extract the public key from the secret key
+    '''
+    if len(sk) != crypto_sign_ed25519_SECRETKEYBYTES:
+        raise ValueError('Invalid secret key')
+
+    pk = ctypes.create_string_buffer(crypto_sign_PUBLICKEYBYTES)
+    ret = nacl.crypto_sign_ed25519_sk_to_pk(pk, sk)
+    if ret:
+        raise ValueError('Failed to generate public key')
+    return pk.raw
+
+
+def crypto_sign_ed25519_sk_to_seed(sk):
+    '''
+    Extract the seed from the secret key
+    '''
+    if len(sk) != crypto_sign_ed25519_SECRETKEYBYTES:
+        raise ValueError('Invalid secret key')
+
+    seed = ctypes.create_string_buffer(crypto_sign_SEEDBYTES)
+    ret = nacl.crypto_sign_ed25519_sk_to_seed(seed, sk)
+    if ret:
+        raise ValueError('Failed to generate seed')
+    return seed.raw
+
+
 def crypto_sign(msg, sk):
     '''
-    Sign the given message witht he given signing key
+    Sign the given message with the given signing key
     '''
+    if len(sk) != crypto_sign_SECRETKEYBYTES:
+        raise ValueError('Invalid secret key')
+
     sig = ctypes.create_string_buffer(len(msg) + crypto_sign_BYTES)
     slen = ctypes.pointer(ctypes.c_ulonglong())
     ret = nacl.crypto_sign(
@@ -317,12 +439,33 @@ def crypto_sign(msg, sk):
     return sig.raw
 
 
+def crypto_sign_detached(msg, sk):
+    '''
+    Return signature for the given message with the given signing key
+    '''
+    if len(sk) != crypto_sign_SECRETKEYBYTES:
+        raise ValueError('Invalid secret key')
+
+    sig = ctypes.create_string_buffer(crypto_sign_BYTES)
+    slen = ctypes.pointer(ctypes.c_ulonglong())
+    ret = nacl.crypto_sign_detached(
+            sig,
+            slen,
+            msg,
+            ctypes.c_ulonglong(len(msg)),
+            sk)
+    if ret:
+        raise ValueError('Failed to sign message')
+    return sig.raw[:slen.contents.value]
+
+
 def crypto_sign_seed_keypair(seed):
     '''
-    Computes and returns the secret adn verify keys from the given seed
+    Computes and returns the secret and verify keys from the given seed
     '''
     if len(seed) != crypto_sign_SEEDBYTES:
         raise ValueError('Invalid Seed')
+
     sk = ctypes.create_string_buffer(crypto_sign_SECRETKEYBYTES)
     vk = ctypes.create_string_buffer(crypto_sign_PUBLICKEYBYTES)
 
@@ -336,6 +479,9 @@ def crypto_sign_open(sig, vk):
     '''
     Verifies the signed message sig using the signer's verification key
     '''
+    if len(vk) != crypto_sign_PUBLICKEYBYTES:
+        raise ValueError('Invalid public key')
+
     msg = ctypes.create_string_buffer(len(sig))
     msglen = ctypes.c_ulonglong()
     msglenp = ctypes.pointer(msglen)
@@ -348,6 +494,26 @@ def crypto_sign_open(sig, vk):
     if ret:
         raise ValueError('Failed to validate message')
     return msg.raw[:msglen.value]  # pylint: disable=invalid-slice-index
+
+
+def crypto_sign_verify_detached(sig, msg, vk):
+    '''
+    Verifies that sig is a valid signature for the message msg using the signer's verification key
+    '''
+    if len(sig) != crypto_sign_BYTES:
+        raise ValueError('Invalid signature')
+    if len(vk) != crypto_sign_PUBLICKEYBYTES:
+        raise ValueError('Invalid public key')
+
+    ret = nacl.crypto_sign_verify_detached(
+            sig,
+            msg,
+            ctypes.c_ulonglong(len(msg)),
+            vk)
+    if ret:
+        raise ValueError('Failed to validate message')
+    return msg
+
 
 # Authenticated Symmetric Encryption
 
@@ -406,6 +572,178 @@ def crypto_secretbox_open(ctxt, nonce, key):
         raise ValueError('Failed to decrypt message')
     return msg.raw[crypto_secretbox_ZEROBYTES:]
 
+# Authenticated Symmetric Encryption improved version
+
+
+def crypto_secretbox_easy(cmessage, nonce, key):
+    if len(key) != crypto_secretbox_KEYBYTES:
+        raise ValueError('Invalid key')
+
+    if len(nonce) != crypto_secretbox_NONCEBYTES:
+        raise ValueError('Invalid nonce')
+
+
+    ctxt = ctypes.create_string_buffer(crypto_secretbox_MACBYTES + len(cmessage))
+    ret = nacl.crypto_secretbox_easy(ctxt, cmessage, ctypes.c_ulonglong(len(cmessage)), nonce, key)
+    if ret:
+        raise ValueError('Failed to encrypt message')
+    return ctxt.raw[0:]
+
+def crypto_secretbox_open_easy(ctxt, nonce, key):
+
+    if len(key) != crypto_secretbox_KEYBYTES:
+        raise ValueError('Invalid key')
+
+    if len(nonce) != crypto_secretbox_NONCEBYTES:
+        raise ValueError('Invalid nonce')
+
+    msg = ctypes.create_string_buffer(len(ctxt))
+    ret = nacl.crypto_secretbox_open_easy(msg, ctxt, ctypes.c_ulonglong(len(ctxt)), nonce, key)
+    if ret:
+        raise ValueError('Failed to decrypt message')
+    return msg.raw[0:len(ctxt) - crypto_secretbox_MACBYTES]
+
+# Authenticated Symmetric Encryption with Additional Data
+
+
+def crypto_aead_aes256gcm_encrypt(message, aad, nonce, key):
+    """Encrypts and authenticates a message with public additional data using the given secret key, and nonce
+
+    Args:
+        message (bytes): a message to encrypt
+        aad  (bytes): additional public data to authenticate
+        nonce (bytes): nonce, does not have to be confidential must be
+            `crypto_aead_aes256gcm_NPUBBYTES` in length
+        key (bytes): secret key, must be `crypto_aead_aes256gcm_KEYBYTES` in
+            length
+
+    Returns:
+        bytes: the ciphertext
+
+    Raises:
+        ValueError: if arguments' length is wrong or the operation has failed.
+    """
+    if not HAS_AEAD_AES256GCM:
+        raise ValueError('Underlying Sodium library does not support AES256-GCM AEAD')
+
+    if len(key) != crypto_aead_aes256gcm_KEYBYTES:
+        raise ValueError('Invalid key')
+
+    if len(nonce) != crypto_aead_aes256gcm_NPUBBYTES:
+        raise ValueError('Invalid nonce')
+
+    length = len(message) + crypto_aead_aes256gcm_ABYTES
+    clen = ctypes.c_ulonglong()
+    c = ctypes.create_string_buffer(length)
+    ret = nacl.crypto_aead_aes256gcm_encrypt(
+        c, ctypes.pointer(clen),
+        message, ctypes.c_ulonglong(len(message)),
+        aad, ctypes.c_ulonglong(len(aad)),
+        None,
+        nonce, key)
+    if ret:
+        raise ValueError('Failed to encrypt message')
+    return c.raw
+
+
+def crypto_aead_chacha20poly1305_ietf_encrypt(message, aad, nonce, key):
+    """Encrypts and authenticates a message with public additional data using the given secret key, and nonce
+
+    Args:
+        message (bytes): a message to encrypt
+        aad  (bytes): additional public data to authenticate
+        nonce (bytes): nonce, does not have to be confidential must be
+            `crypto_aead_chacha20poly1305_ietf_NPUBBYTES` in length
+        key (bytes): secret key, must be `crypto_aead_chacha20poly1305_ietf_KEYBYTES` in
+            length
+
+    Returns:
+        bytes: the ciphertext
+
+    Raises:
+        ValueError: if arguments' length is wrong or the operation has failed.
+    """
+    if not HAS_AEAD_CHACHA20POLY1305_IETF:
+        raise ValueError('Underlying Sodium library does not support IETF variant of ChaCha20Poly1305 AEAD')
+
+    if len(key) != crypto_aead_chacha20poly1305_ietf_KEYBYTES:
+        raise ValueError('Invalid key')
+
+    if len(nonce) != crypto_aead_chacha20poly1305_ietf_NPUBBYTES:
+        raise ValueError('Invalid nonce')
+
+    length = len(message) + crypto_aead_chacha20poly1305_ietf_ABYTES
+    clen = ctypes.c_ulonglong()
+    c = ctypes.create_string_buffer(length)
+    ret = nacl.crypto_aead_chacha20poly1305_ietf_encrypt(
+        c, ctypes.pointer(clen),
+        message, ctypes.c_ulonglong(len(message)),
+        aad, ctypes.c_ulonglong(len(aad)),
+        None,
+        nonce, key)
+    if ret:
+        raise ValueError('Failed to encrypt message')
+    return c.raw
+
+
+def crypto_aead_aes256gcm_decrypt(ctxt, aad, nonce, key):
+    """
+    Decrypts a ciphertext ctxt given the key, nonce, and aad. If the aad
+    or ciphertext were altered then the decryption will fail.
+    """
+    if not HAS_AEAD_AES256GCM:
+        raise ValueError('Underlying Sodium library does not support AES256-GCM AEAD')
+
+    if len(key) != crypto_aead_aes256gcm_KEYBYTES:
+        raise ValueError('Invalid key')
+
+    if len(nonce) != crypto_aead_aes256gcm_NPUBBYTES:
+        raise ValueError('Invalid nonce')
+
+    length = len(ctxt)-crypto_aead_aes256gcm_ABYTES
+    mlen = ctypes.c_ulonglong()
+    m = ctypes.create_string_buffer(length)
+
+    ret = nacl.crypto_aead_aes256gcm_decrypt(
+        m, ctypes.byref(mlen),
+        None,
+        ctxt, ctypes.c_ulonglong(len(ctxt)),
+        aad, ctypes.c_ulonglong(len(aad)),
+        nonce, key)
+    if ret:
+        raise ValueError('Failed to decrypt message')
+    return m.raw
+
+
+def crypto_aead_chacha20poly1305_ietf_decrypt(ctxt, aad, nonce, key):
+    """
+    Decrypts a ciphertext ctxt given the key, nonce, and aad. If the aad
+    or ciphertext were altered then the decryption will fail.
+    """
+    if not HAS_AEAD_CHACHA20POLY1305_IETF:
+        raise ValueError('Underlying Sodium library does not support IETF variant of ChaCha20Poly1305 AEAD')
+
+    if len(key) != crypto_aead_chacha20poly1305_ietf_KEYBYTES:
+        raise ValueError('Invalid key')
+
+    if len(nonce) != crypto_aead_chacha20poly1305_ietf_NPUBBYTES:
+        raise ValueError('Invalid nonce')
+
+    length = len(ctxt)-crypto_aead_chacha20poly1305_ietf_ABYTES
+    mlen = ctypes.c_ulonglong()
+    m = ctypes.create_string_buffer(length)
+
+    ret = nacl.crypto_aead_chacha20poly1305_ietf_decrypt(
+        m, ctypes.byref(mlen),
+        None,
+        ctxt, ctypes.c_ulonglong(len(ctxt)),
+        aad, ctypes.c_ulonglong(len(aad)),
+        nonce, key)
+    if ret:
+        raise ValueError('Failed to decrypt message')
+    return m.raw
+
+
 # Symmetric Encryption
 
 
@@ -413,6 +751,11 @@ def crypto_stream(slen, nonce, key):
     '''
     Generates a stream using the given secret key and nonce
     '''
+    if len(key) != crypto_stream_KEYBYTES:
+        raise ValueError('Invalid secret key')
+    if len(nonce) != crypto_stream_NONCEBYTES:
+        raise ValueError('Invalid nonce')
+
     stream = ctypes.create_string_buffer(slen)
     ret = nacl.crypto_stream(stream, ctypes.c_ulonglong(slen), nonce, key)
     if ret:
@@ -428,6 +771,11 @@ def crypto_stream_xor(msg, nonce, key):
     plaintext (xor) the output of crypto_stream. Consequently
     crypto_stream_xor can also be used to decrypt
     '''
+    if len(key) != crypto_stream_KEYBYTES:
+        raise ValueError('Invalid secret key')
+    if len(nonce) != crypto_stream_NONCEBYTES:
+        raise ValueError('Invalid nonce')
+
     stream = ctypes.create_string_buffer(len(msg))
     ret = nacl.crypto_stream_xor(
             stream,
@@ -448,6 +796,9 @@ def crypto_auth(msg, key):
     Constructs a one time authentication token for the given message msg
     using a given secret key
     '''
+    if len(key) != crypto_auth_KEYBYTES:
+        raise ValueError('Invalid secret key')
+
     tok = ctypes.create_string_buffer(crypto_auth_BYTES)
     ret = nacl.crypto_auth(tok, msg, ctypes.c_ulonglong(len(msg)), key)
     if ret:
@@ -460,6 +811,11 @@ def crypto_auth_verify(tok, msg, key):
     Verifies that the given authentication token is correct for the given
     message and key
     '''
+    if len(key) != crypto_auth_KEYBYTES:
+        raise ValueError('Invalid secret key')
+    if len(tok) != crypto_auth_BYTES:
+        raise ValueError('Invalid authenticator')
+
     ret = nacl.crypto_auth_verify(tok, msg, ctypes.c_ulonglong(len(msg)), key)
     if ret:
         raise ValueError('Failed to auth msg')
@@ -584,19 +940,6 @@ def crypto_generichash(msg, key=None):
             ctypes.c_size_t(key_len))
     return hbuf.raw
 
-# scalarmult
-
-
-def crypto_scalarmult_base(n):
-    '''
-    Computes and returns the scalar product of a standard group element and an
-    integer "n".
-    '''
-    buf = ctypes.create_string_buffer(crypto_scalarmult_BYTES)
-    ret = nacl.crypto_scalarmult_base(buf, n)
-    if ret:
-        raise CryptError('Failed to compute scalar product')
-    return buf.raw
 
 # String cmp
 
@@ -611,7 +954,8 @@ def crypto_verify_16(string1, string2):
     matching prefix of string1 and string2. This often allows for easy
     timing attacks.
     '''
-    return not nacl.crypto_verify_16(string1, string2)
+    a, b, c = (len(string1) >= 16), (len(string2) >= 16), (not nacl.crypto_verify_16(string1, string2))
+    return a & b & c
 
 
 def crypto_verify_32(string1, string2):
@@ -624,7 +968,8 @@ def crypto_verify_32(string1, string2):
     matching prefix of string1 and string2. This often allows for easy
     timing attacks.
     '''
-    return not nacl.crypto_verify_32(string1, string2)
+    a, b, c = (len(string1) >= 32), (len(string2) >= 32), (not nacl.crypto_verify_32(string1, string2))
+    return a & b & c
 
 
 def crypto_verify_64(string1, string2):
@@ -637,7 +982,30 @@ def crypto_verify_64(string1, string2):
     matching prefix of string1 and string2. This often allows for easy
     timing attacks.
     '''
-    return not nacl.crypto_verify_64(string1, string2)
+    a, b, c = (len(string1) >= 64), (len(string2) >= 64), (not nacl.crypto_verify_64(string1, string2))
+    return a & b & c
+
+
+def bytes_eq(a, b):
+    '''
+    Compares two byte instances with one another. If `a` and `b` have
+    different lengths, return `False` immediately. Otherwise `a` and `b`
+    will be compared in constant time.
+
+    Return `True` in case `a` and `b` are equal. Otherwise `False`.
+
+    Raises :exc:`TypeError` in case `a` and `b` are not both of the type
+    :class:`bytes`.
+    '''
+    if not isinstance(a, bytes) or not isinstance(b, bytes):
+        raise TypeError('Both arguments must be bytes.')
+
+    len_a = len(a)
+    len_b = len(b)
+    if len_a != len_b:
+        return False
+
+    return nacl.sodium_memcmp(a, b, len_a) == 0
 
 # Random byte generation
 
@@ -660,6 +1028,22 @@ def randombytes_buf(size):
     nacl.randombytes_buf(buf, size)
     return buf.raw
 
+def randombytes_buf_deterministic(size, seed):
+    '''
+    Returns a string of random byles of the given size for a given seed.
+    For a given seed, this function will always output the same sequence.
+    Size can be up to 2^70 (256 GB).
+    '''
+
+    if not HAS_RAND_SEED:
+        raise ValueError('Underlying Sodium library does not support randombytes_seedbytes')
+    if len(seed) != randombytes_SEEDBYTES:
+        raise ValueError('Invalid key seed')
+
+    size = int(size)
+    buf = ctypes.create_string_buffer(size)
+    nacl.randombytes_buf_deterministic(buf, size, seed)
+    return buf.raw
 
 def randombytes_close():
     '''
@@ -692,6 +1076,85 @@ def randombytes_uniform(upper_bound):
     '''
     return nacl.randombytes_uniform(upper_bound)
 
+# Key derivation API
+
+def crypto_kdf_keygen():
+    '''
+    Returns a string of random bytes to generate a master key
+    '''
+    if not HAS_CRYPT_KDF:
+        raise ValueError('Underlying Sodium library does not support crypto_kdf_keybytes')
+    size = crypto_kdf_KEYBYTES
+    buf = ctypes.create_string_buffer(size)
+    nacl.crypto_kdf_keygen(buf)
+    return buf.raw
+
+def crypto_kdf_derive_from_key(subkey_size, subkey_id, context, master_key):
+    '''
+    Returns a subkey generated from a master key for a given subkey_id.
+    For a given subkey_id, the subkey will always be the same string.
+    '''
+    size = int(subkey_size)
+    buf = ctypes.create_string_buffer(size)
+    nacl.crypto_kdf_derive_from_key(buf, subkey_size, ctypes.c_ulonglong(subkey_id), context, master_key)
+    return buf.raw
+
+# Key Exchange API
+
+def crypto_kx_keypair():
+    '''
+    Generate and return a new keypair
+    '''
+    if not HAS_CRYPT_KX:
+        raise ValueError('Underlying Sodium library does not support crypto_kx')
+    pk = ctypes.create_string_buffer(crypto_kx_PUBLICKEYBYTES)
+    sk = ctypes.create_string_buffer(crypto_kx_SECRETKEYBYTES)
+    nacl.crypto_kx_keypair(pk, sk)
+    return pk.raw, sk.raw
+
+def crypto_kx_seed_keypair(seed):
+    '''
+    Generate and return a keypair from a key seed
+    '''
+    if not HAS_CRYPT_KX:
+        raise ValueError('Underlying Sodium library does not support crypto_kx')
+
+    if len(seed) != crypto_kx_SEEDBYTES:
+        raise ValueError('Invalid key seed')
+    pk = ctypes.create_string_buffer(crypto_kx_PUBLICKEYBYTES)
+    sk = ctypes.create_string_buffer(crypto_kx_SECRETKEYBYTES)
+    nacl.crypto_kx_seed_keypair(pk, sk, seed)
+    return pk.raw, sk.raw
+
+def crypto_kx_client_session_keys(client_pk, client_sk, server_pk):
+    '''
+    Computes a pair of shared keys (rx and tx) using the client's public key client_pk,
+    the client's secret key client_sk and the server's public key server_pk.
+    Status returns 0 on success, or -1 if the server's public key is not acceptable.
+    '''
+    if not HAS_CRYPT_KX:
+        raise ValueError('Underlying Sodium library does not support crypto_kx')
+
+    rx = ctypes.create_string_buffer(crypto_kx_SESSIONKEYBYTES)
+    tx = ctypes.create_string_buffer(crypto_kx_SESSIONKEYBYTES)
+    status = nacl.crypto_kx_client_session_keys(rx, tx, client_pk, client_sk, server_pk)
+    return rx.raw, tx.raw, status
+
+def crypto_kx_server_session_keys(server_pk, server_sk, client_pk):
+    '''
+    Computes a pair of shared keys (rx and tx) using the server's public key server_pk,
+    the server's secret key server_sk and the client's public key client_pk.
+    Status returns 0 on success, or -1 if the client's public key is not acceptable.
+    '''
+    if not HAS_CRYPT_KX:
+        raise ValueError('Underlying Sodium library does not support crypto_kx')
+
+    rx = ctypes.create_string_buffer(crypto_kx_SESSIONKEYBYTES)
+    tx = ctypes.create_string_buffer(crypto_kx_SESSIONKEYBYTES)
+    status = nacl.crypto_kx_server_session_keys(rx, tx, server_pk, server_sk, client_pk)
+    return rx.raw, tx.raw, status
+
+
 
 # Utility functions
 
@@ -716,3 +1179,31 @@ def sodium_version_string():
     func = nacl.sodium_version_string
     func.restype = ctypes.c_char_p
     return func()
+
+
+def crypto_sign_ed25519_pk_to_curve25519(ed25519_pk):
+    '''
+    Convert an Ed25519 public key to a Curve25519 public key
+    '''
+    if len(ed25519_pk) != crypto_sign_ed25519_PUBLICKEYBYTES:
+        raise ValueError('Invalid public key')
+
+    curve25519_pk = ctypes.create_string_buffer(crypto_scalarmult_curve25519_BYTES)
+    ret = nacl.crypto_sign_ed25519_pk_to_curve25519(curve25519_pk, ed25519_pk)
+    if ret:
+        raise CryptError('Failed to generate Curve25519 public key')
+    return curve25519_pk.raw
+
+
+def crypto_sign_ed25519_sk_to_curve25519(ed25519_sk):
+    '''
+    Convert an Ed25519 secret key to a Curve25519 secret key
+    '''
+    if len(ed25519_sk) != crypto_sign_ed25519_SECRETKEYBYTES:
+        raise ValueError('Invalid secret key')
+
+    curve25519_sk = ctypes.create_string_buffer(crypto_scalarmult_curve25519_BYTES)
+    ret = nacl.crypto_sign_ed25519_sk_to_curve25519(curve25519_sk, ed25519_sk)
+    if ret:
+        raise CryptError('Failed to generate Curve25519 secret key')
+    return curve25519_sk.raw

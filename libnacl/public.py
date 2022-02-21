@@ -15,7 +15,25 @@ class PublicKey(libnacl.base.BaseKey):
     This class is used to manage public keys
     '''
     def __init__(self, pk):
-        self.pk = pk
+        if len(pk) == libnacl.crypto_box_PUBLICKEYBYTES:
+            self.pk = pk
+        else:
+            raise ValueError('Passed in invalid public key')
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.pk == other.pk
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash(self.pk)
+
+    def seal(self, message):
+        return libnacl.crypto_box_seal(message, self.pk)
 
     def seal(self, message):
         return libnacl.crypto_box_seal(message, self.pk)
@@ -36,6 +54,18 @@ class SecretKey(libnacl.base.BaseKey):
             self.pk = libnacl.crypto_scalarmult_base(sk)
         else:
             raise ValueError('Passed in invalid secret key')
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.sk == other.sk and self.pk == other.pk
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((self.sk, self.pk))
 
     def seal(self, *args, **kargs):
         return PublicKey(self.pk).seal(*args, **kargs)
