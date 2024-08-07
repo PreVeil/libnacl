@@ -3,6 +3,7 @@
 Wrap libsodium routines
 '''
 # pylint: disable=C0103
+from __future__ import print_function
 # Import libnacl libs
 from libnacl.version import __version__
 # Import python libs
@@ -29,7 +30,7 @@ def _get_nacl():
         try:
             return ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(os.path.abspath(__file__)), name))
         except OSError as e: # fall back to default
-            print e
+            print(e)
 
     if sys.platform.startswith('win'):
         try:
