@@ -58,3 +58,4 @@ doc/_build/
 
 # pycharm
 .idea*
+.mipy3env

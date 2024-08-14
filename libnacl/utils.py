@@ -31,7 +31,7 @@ def load_key(path_or_file, serial='json'):
             key_data = msgpack.load(stream)
         elif serial == 'json':
             import json
-            key_data = json.loads(stream.read(), encoding='UTF-8')
+            key_data = json.loads(stream.read())
     finally:
         if stream != path_or_file:
             stream.close()

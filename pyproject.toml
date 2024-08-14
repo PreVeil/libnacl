@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "libnacl"
+version = "1.4.5+preveil2"
+description = "Python bindings for libsodium based on ctypes"
+authors = ["Thomas S Hatch <thatch45@gmail.com>", "PreVeil"]
+license = "Apache-2.0"
+homepage="https://github.com/PreVeil/libnacl"
+repository="https://github.com/PreVeil/libnacl"
+documentation="https://libnacl.readthedocs.org"
+readme = "readme.md"
+classifiers = [
+        "Operating System :: OS Independent",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3.12",
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Developers",
+        "Topic :: Security :: Cryptography",
+    ]
+#include = [
+#    { path = "doc", format = "sdist" },
+#    { path = "tests", format = "sdist" },
+#]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
