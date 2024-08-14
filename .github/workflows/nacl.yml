@@ -1,0 +1,72 @@
+name: Python 3 Workflow
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - pavel/DA-2731-py2to3_v1.4.5+preveil1
+
+jobs:
+  ci:
+    strategy:
+      fail-fast: false
+      #TODO: windows, linux
+      matrix:
+        include:
+          - os: macos-12
+            py-arch: 'x64'
+          # - os: macos-latest
+          #   py-arch: 'arm64'
+
+    env:
+      ARTIFACT_DIR: build-${{ matrix.os }}-${{ matrix.py-arch }}
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+
+    - name: Checkout
+      if: github.event_name == 'push'
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python3 -m venv .venv
+        source .venv/bin/activate
+        pip install -U pip setuptools
+        pip install poetry
+        poetry install
+      shell: bash
+
+    - name: Run tests
+      run: |
+        source .venv/bin/activate
+        poetry run python tests/runtests.py
+      shell: bash
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+    - name: Build python wheels
+      run: |
+        source .venv/bin/activate
+        poetry build
+      shell: bash
+
+    - name: Upload artifacts to s3
+      run: |
+        [[ "${{ github.event_name }}" == "pull_request" ]] && HEAD_COMMIT=${{ github.event.pull_request.head.sha }}
+        [[ "${{ github.event_name }}" == "push" ]] && HEAD_COMMIT=${{ github.sha }}
+        aws s3 cp --recursive dist/ s3://pv-bin-storage/ci/fipscrypto_build_$PLATFORM_TARGET/$HEAD_COMMIT/
+        echo "=============================="
+        echo "S3 LOCATION: s3://pv-bin-storage/ci/preveil_libnacl/$HEAD_COMMIT/"
+      shell: bash
