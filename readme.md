@@ -20,6 +20,23 @@ poetry install
 poetry run python tests/runtests.py
 ```
 
+## Build the wheel
+
+```bash
+poetry build
+```
+
+The wheel will be in the `dist` directory, e.g.
+    
+```bash 
+> ls dist/
+libnacl-1.4.5+preveil2-py3-none-any.whl  
+libnacl-1.4.5+preveil2.tar.gz
+````
+
+
+---
+
 # Python libnacl (ORIGINAL INSTRUCTIONS)
 
 This library is used to gain direct access to the functions exposed by
